@@ -22,6 +22,7 @@ import io.layertrace.core.model.Page
 import io.layertrace.core.model.PageItem
 import io.layertrace.core.model.Spread
 import io.layertrace.core.model.SwatchKind
+import kotlin.math.roundToInt
 
 fun Matrix.toAndroid(): AMatrix = AMatrix().apply {
     setValues(floatArrayOf(a.toFloat(), c.toFloat(), tx.toFloat(), b.toFloat(), d.toFloat(), ty.toFloat(), 0f, 0f, 1f))
@@ -108,10 +109,10 @@ class PageRenderer(val fonts: FontRegistry, val images: ImageCache, val text: Te
         if (!item.visible) return
         val count = canvas.save()
         canvas.concat(item.transform.toAndroid())
-        val alpha = (item.opacity.coerceIn(0.0, 100.0) * 2.55).toInt()
+        val alpha = (item.opacity.coerceIn(0.0, 100.0) * 255 / 100).roundToInt()
         if (alpha < 255) {
             val b = item.innerBounds.inset(-item.strokeWeight - 2).toRectF()
-            canvas.saveLayerAlpha(b, alpha)
+            canvas.saveLayer(b, Paint().apply { this.alpha = alpha })
         }
         when (item.kind) {
             ItemKind.Group -> item.children.forEach { drawItem(canvas, doc, idx, it, opts) }
@@ -223,11 +224,11 @@ class PageRenderer(val fonts: FontRegistry, val images: ImageCache, val text: Te
         canvas.restore()
     }
 
-    fun renderPageBitmap(doc: Document, spread: Spread, page: Page, widthPx: Int): Bitmap {
+    fun renderPageBitmap(doc: Document, spread: Spread, page: Page, widthPx: Int, opts: RenderOptions = RenderOptions(printOnly = true, placeholders = false)): Bitmap {
         val pb = page.boundsInSpread
         val scale = widthPx / pb.width.toFloat()
         val bmp = Bitmap.createBitmap(widthPx.coerceAtLeast(1), (pb.height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-        drawPage(Canvas(bmp), doc, spread, page, 0.0, scale)
+        drawPage(Canvas(bmp), doc, spread, page, 0.0, scale, opts)
         return bmp
     }
 }

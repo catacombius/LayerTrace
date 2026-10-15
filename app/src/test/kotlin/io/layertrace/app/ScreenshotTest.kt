@@ -2,6 +2,10 @@ package io.layertrace.app
 
 import android.graphics.Rect
 import androidx.compose.ui.test.junit4.createComposeRule
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.layertrace.app.editor.EditorViewModel
@@ -100,6 +104,33 @@ class ScreenshotTest {
         vm.beginTextEdit(f, 5)
         vm.setCaret(30, 18)
         shoot("text_editing", vm)
+    }
+
+    /**
+     * The Fold's inner screen in portrait, Touch workspace, zoomed in with a frame selected: the
+     * configuration from the first on-device report, where the canvas drew over the menu and tool
+     * bars and the rulers and handles were drawn in page space.
+     */
+    @Test @Config(qualifiers = "w718dp-h762dp-420dpi")
+    fun foldInnerPortraitTouch() {
+        val vm = sampleVm().also { it.changeWorkspace(WorkspaceMode.Touch) }
+        val spread = vm.doc!!.spreads[1]
+        val r = spread.pages[1].boundsInSpread
+        val frame = vm.createItem(spread.id, Tool.Frame, Point(r.left + 60, r.top + 60), Point(r.left + 200, r.top + 300))!!
+        vm.select(listOf(frame))
+        shoot("fold_inner_portrait_touch", vm)
+        vm.setZoomPercent(35f)
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/fold_inner_portrait_touch_35.png")
+
+        // Rulers hug the canvas edges at any zoom, and the canvas leaves the menu bar visible.
+        val shot = android.graphics.BitmapFactory.decodeFile("build/outputs/roborazzi/fold_inner_portrait_touch_35.png")
+        val b = compose.onNodeWithTag("documentCanvas").fetchSemanticsNode().boundsInRoot
+        val ruler = io.layertrace.app.ui.theme.EditorColors().chromeLow.toArgb()
+        val rs = 20 * 2.625f
+        assertEquals(ruler, shot.getPixel((b.left + rs / 2).toInt(), b.center.y.toInt()))
+        assertEquals(ruler, shot.getPixel(b.center.x.toInt(), (b.top + rs / 2).toInt()))
+        assertTrue("menu bar must not be covered", b.top > 20 * 2.625f)
     }
 
     @Test @Config(qualifiers = "w1280dp-h800dp-xhdpi")

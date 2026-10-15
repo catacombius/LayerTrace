@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenu
@@ -59,7 +60,7 @@ fun MenuItems(vm: EditorViewModel, entries: List<MenuEntry>, onDone: () -> Unit)
         val enabled = vm.isEnabled(a)
         val checked = isChecked(vm, a)
         DropdownMenuItem(
-            modifier = Modifier.height(34.dp),
+            modifier = Modifier.heightIn(min = if (vm.workspace == WorkspaceMode.Touch) 44.dp else 34.dp),
             leadingIcon = {
                 when {
                     checked == true -> Icon(Icons.Default.Check, null, Modifier.width(18.dp))
@@ -69,9 +70,12 @@ fun MenuItems(vm: EditorViewModel, entries: List<MenuEntry>, onDone: () -> Unit)
             },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(a.label, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
-                    Spacer(Modifier.width(24.dp))
-                    a.shortcut?.let { Text(it.display, fontSize = 11.sp, color = colors.textDim) }
+                    Text(a.label, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f, fill = false))
+                    // Shortcut hints only matter with a keyboard attached.
+                    if (vm.workspace == WorkspaceMode.KeyboardMouse) a.shortcut?.let {
+                        Spacer(Modifier.width(24.dp))
+                        Text(it.display, fontSize = 11.sp, color = colors.textDim, maxLines = 1, softWrap = false)
+                    }
                 }
             },
             enabled = enabled,

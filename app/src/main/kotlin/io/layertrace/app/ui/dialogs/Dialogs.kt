@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import io.layertrace.app.editor.Act
 import io.layertrace.app.editor.Dialog
@@ -48,6 +49,7 @@ import io.layertrace.app.ui.components.Swatch
 import io.layertrace.app.ui.components.TextInput
 import io.layertrace.app.ui.components.UnitField
 import io.layertrace.app.ui.theme.LocalEditorColors
+import io.layertrace.core.idml.InddImporter
 import io.layertrace.core.edit.DocumentFactory
 import io.layertrace.core.model.CharacterStyle
 import io.layertrace.core.model.ColorSpace
@@ -73,7 +75,8 @@ fun DialogHost(vm: EditorViewModel) {
         is Dialog.EditParagraphStyle -> ParagraphStyleDialog(vm, d.style)
         is Dialog.EditCharacterStyle -> CharacterStyleDialog(vm, d.style)
         is Dialog.RenameLayer -> LayerDialog(vm, d)
-        is Dialog.InddInfo -> InddDialog(vm, d.fileName)
+        is Dialog.InddInfo -> InddDialog(vm, d.fileName, d.uri)
+        is Dialog.InddImported -> InddImportedDialog(vm, d.fileName, d.result)
         Dialog.Shortcuts -> ShortcutsDialog(vm)
         Dialog.About -> AboutDialog(vm)
         is Dialog.ConfirmDiscard -> AlertDialog(
@@ -390,20 +393,70 @@ private fun LayerDialog(vm: EditorViewModel, dlg: Dialog.RenameLayer) {
 }
 
 @Composable
-private fun InddDialog(vm: EditorViewModel, file: String) {
+private fun InddDialog(vm: EditorViewModel, file: String, uri: android.net.Uri) {
     AlertDialog(
         onDismissRequest = { vm.dialog = null },
         title = { Text("$file is a native InDesign file") },
         text = {
-            Text(
-                "Native .indd files use Adobe's proprietary, undocumented binary format, which no app except InDesign can edit reliably. " +
-                    "LayerTrace works with IDML, InDesign's open exchange format, which keeps pages, frames, text, styles, colors and images.\n\n" +
-                    "To convert: open the file in InDesign (desktop, or a colleague's) and choose File › Save As… › InDesign Markup (IDML), " +
-                    "or File › Export › InDesign Markup. Then open the .idml here. Files you save in LayerTrace are IDML and open directly in InDesign.",
-            )
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Text(
+                    "Native .indd files use Adobe's proprietary, undocumented binary format. No app except InDesign can read their " +
+                        "frames and text. LayerTrace edits IDML, InDesign's open exchange format, which keeps pages, frames, text, " +
+                        "styles, colors and images.",
+                )
+                Text("Full conversion", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                Text(
+                    "Open the file in InDesign (desktop, or a colleague's) and choose File › Save As… › InDesign Markup (IDML), " +
+                        "then open the .idml here.",
+                )
+                Text("Import preview", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                Text(
+                    "Recover what the file's embedded metadata holds: page count and size, swatches, the list of fonts and linked " +
+                        "files, and InDesign's preview image of page 1. The preview goes on a locked, non-printing layer so you " +
+                        "can rebuild the layout over it.",
+                )
+            }
+        },
+        confirmButton = { TextButton({ vm.importIndd(uri) }) { Text("Import preview") } },
+        dismissButton = {
+            Row {
+                TextButton({ vm.dialog = null; vm.fileRequest = FileRequest.OpenDocument }) { Text("Open an IDML…") }
+                TextButton({ vm.dialog = null }) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun InddImportedDialog(vm: EditorViewModel, file: String, r: InddImporter.Result) {
+    val u = vm.view.unit
+    AlertDialog(
+        onDismissRequest = { vm.dialog = null },
+        title = { Text("Imported from $file") },
+        text = {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                if (!r.hadMetadata) Text("No metadata was found in this file, so a blank one-page document was created.")
+                Text("${r.pageCount} page${if (r.pageCount == 1) "" else "s"}, ${u.format(r.pageWidth, false)} × ${u.format(r.pageHeight)}")
+                Text(
+                    if (r.hasPreview) "Page 1 preview placed on the locked layer \"${InddImporter.PREVIEW_LAYER}\" (not printed or exported)."
+                    else "The file has no embedded page preview.",
+                )
+                if (r.swatches.isNotEmpty()) Text("Swatches added: ${r.swatches.joinToString()}", Modifier.padding(top = 8.dp))
+                if (r.fonts.isNotEmpty()) {
+                    Text("Fonts used", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                    for (f in r.fonts) Text("• $f" + if (vm.engine.fonts.isAvailable(f.substringBefore('-'))) "" else "  (not installed)", fontSize = 13.sp)
+                }
+                if (r.links.isNotEmpty()) {
+                    Text("Linked files", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                    for (l in r.links) Text("• " + l.substringAfterLast('/'), fontSize = 13.sp)
+                }
+                Text(
+                    "Frames, text and styles can't be read from .indd. For a full conversion, save the file as IDML in InDesign.",
+                    modifier = Modifier.padding(top = 12.dp), fontSize = 13.sp,
+                )
+            }
         },
         confirmButton = { TextButton({ vm.dialog = null }) { Text("OK") } },
-        dismissButton = { TextButton({ vm.dialog = null; vm.fileRequest = FileRequest.OpenDocument }) { Text("Open an IDML…") } },
     )
 }
 

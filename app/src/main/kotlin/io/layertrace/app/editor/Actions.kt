@@ -1,6 +1,8 @@
 package io.layertrace.app.editor
 
+import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.nativeKeyCode
 
 /** A keyboard shortcut. `ctrl` also matches Meta (Cmd) on keyboards that have it. */
 data class Shortcut(val key: Key, val ctrl: Boolean = false, val shift: Boolean = false, val alt: Boolean = false) {
@@ -40,9 +42,16 @@ data class Shortcut(val key: Key, val ctrl: Boolean = false, val shift: Boolean 
             Key.F12 -> "F12"
             Key.PageUp -> "PgUp"
             Key.PageDown -> "PgDn"
+            // Key.toString() has no names on devices ("Key code: 214748364800"), so name keys from their Android key code.
             else -> {
-                val s = k.toString() // "Key: A"
-                s.substringAfter("Key: ").ifEmpty { s }
+                val code = k.nativeKeyCode
+                when (code) {
+                    in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> ('A' + (code - KeyEvent.KEYCODE_A)).toString()
+                    in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> ('0' + (code - KeyEvent.KEYCODE_0)).toString()
+                    in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 -> "F${code - KeyEvent.KEYCODE_F1 + 1}"
+                    else -> KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_")
+                        .split('_').joinToString(" ") { w -> if (w.length <= 1) w else w[0] + w.substring(1).lowercase() }
+                }
             }
         }
     }

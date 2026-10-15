@@ -16,8 +16,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -33,6 +32,7 @@ import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import io.layertrace.app.editor.ContextMenuRequest
@@ -96,6 +96,7 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
     var threadFrom by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     val sink = remember(vm) { StoryImeSink(vm) }
+    val frame = remember { FrameBuffer() }
     val touchMode = vm.workspace == WorkspaceMode.Touch
     val showKeyboard = touchMode || !hasHardwareKeyboard(config)
 
@@ -291,7 +292,7 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
         val vp = vm.viewport
         val threshold = 6.0 * density / vp.scale
         when (dr) {
-            is Drag.Pan -> vm.viewport = vp.copy(panX = dr.startPanX + pos.x - dr.start.x, panY = dr.startPanY + pos.y - dr.start.y)
+            is Drag.Pan -> vm.moveViewport(vp.copy(panX = dr.startPanX + pos.x - dr.start.x, panY = dr.startPanY + pos.y - dr.start.y))
             is Drag.ZoomRect -> return dr.copy(b = pos)
             is Drag.GuideDrag -> return dr.copy(pos = pos)
             is Drag.Marquee -> return dr.copy(b = dr.pl.toSpread(vp.toView(pos.x, pos.y)))
@@ -404,7 +405,7 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
                 else {
                     val (w, h) = vm.canvasSize
                     val a = vm.viewport.toView(dr.a.x, dr.a.y); val b = vm.viewport.toView(dr.b.x, dr.b.y)
-                    vm.viewport = Viewport.fit(Rect.ofPoints(a, b), w, h, 0f)
+                    vm.moveViewport(Viewport.fit(Rect.ofPoints(a, b), w, h, 0f))
                 }
             }
             is Drag.GuideDrag -> {
@@ -429,6 +430,7 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
     Box(
         modifier
             .clipToBounds()
+            .testTag("documentCanvas")
             .onSizeChanged { vm.onCanvasSize(it.width.toFloat(), it.height.toFloat()) }
             .focusRequester(focus)
             .focusable()
@@ -501,7 +503,7 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
                             val span = pts.sumOf { hypot((it.position.x - cx).toDouble(), (it.position.y - cy).toDouble()) }.toFloat() / pts.size
                             val pc = prevC
                             if (pc != null && prevSpan > 0f && span > 0f) {
-                                vm.viewport = vm.viewport.zoomAt(span / prevSpan, cx, cy, vm.actualSizeScale * 0.02f, vm.actualSizeScale * 40f)
+                                vm.moveViewport(vm.viewport.zoomAt(span / prevSpan, cx, cy, vm.actualSizeScale * 0.02f, vm.actualSizeScale * 40f))
                                 vm.panBy(cx - pc.x, cy - pc.y)
                             }
                             prevC = Offset(cx, cy); prevSpan = span
@@ -584,9 +586,13 @@ fun DocumentCanvas(vm: EditorViewModel, keys: KeyHandler, modifier: Modifier = M
     ) {
         Canvas(Modifier.fillMaxSize()) {
             @Suppress("UNUSED_VARIABLE") val gen = vm.renderGeneration
-            drawIntoCanvas { cc ->
-                drawDocument(cc.nativeCanvas, vm, colors, size.width, size.height, density, drag, threadFrom, ::selectionFrame, rulerSize())
-            }
+            val bw = size.width.toInt(); val bh = size.height.toInt()
+            if (bw <= 0 || bh <= 0) return@Canvas
+            // Render into our own software bitmap: document transforms and clips can never leak
+            // into Compose's (hardware) canvas, and output matches the JVM screenshot tests.
+            val bmp = frame.obtain(bw, bh)
+            drawDocument(android.graphics.Canvas(bmp), vm, colors, bw.toFloat(), bh.toFloat(), density, drag, threadFrom, ::selectionFrame, rulerSize())
+            drawImage(bmp.asImageBitmap())
         }
     }
 
@@ -630,6 +636,17 @@ fun resizeRect(r: Rect, h: Int, p: Point, proportional: Boolean, fromCenter: Boo
 
 private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+/** Reusable offscreen bitmap for the document view. */
+private class FrameBuffer {
+    private var bmp: android.graphics.Bitmap? = null
+    fun obtain(w: Int, h: Int): android.graphics.Bitmap {
+        val b = bmp
+        if (b != null && b.width == w && b.height == h) return b
+        b?.recycle()
+        return android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also { bmp = it }
+    }
+}
+
 private fun drawDocument(
     c: android.graphics.Canvas,
     vm: EditorViewModel,
@@ -642,7 +659,7 @@ private fun drawDocument(
     selectionFrameOf: (Document, Placement) -> SelectionFrame?,
     rulerSize: Float,
 ) {
-    c.drawColor(colors.pasteboard.toArgb())
+    c.drawRect(0f, 0f, w, h, Paint().apply { color = colors.pasteboard.toArgb() })
     val d = vm.shown ?: return
     val baseCount = c.saveCount
     val vp = vm.viewport

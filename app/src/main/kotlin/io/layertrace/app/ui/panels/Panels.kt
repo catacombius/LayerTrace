@@ -46,8 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -110,14 +109,8 @@ private fun PageThumb(vm: EditorViewModel, d: Document, spread: Spread, page: Pa
     ) {
         Canvas(Modifier.fillMaxSize()) {
             @Suppress("UNUSED_VARIABLE") val g = vm.renderGeneration
-            drawIntoCanvas { c ->
-                val nc = c.nativeCanvas
-                val s = size.width / page.boundsInSpread.width.toFloat()
-                nc.save()
-                nc.clipRect(0f, 0f, size.width, size.height)
-                vm.engine.renderer.drawPage(nc, d, spread, page, 0.0, s, RenderOptions(printOnly = false, placeholders = false))
-                nc.restore()
-            }
+            val wpx = size.width.toInt()
+            if (wpx > 0) drawImage(vm.engine.renderer.renderPageBitmap(d, spread, page, wpx, RenderOptions(printOnly = false, placeholders = false)).asImageBitmap())
         }
     }
 }

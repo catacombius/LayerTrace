@@ -36,6 +36,7 @@ import io.layertrace.core.idml.IdmlFormatException
 import io.layertrace.core.idml.IdmlReader
 import io.layertrace.core.idml.IdmlWriter
 import io.layertrace.core.idml.InddDetector
+import io.layertrace.core.idml.InddImporter
 import io.layertrace.core.model.CharFormat
 import io.layertrace.core.model.CharacterStyle
 import io.layertrace.core.model.Document
@@ -71,7 +72,8 @@ sealed class Dialog {
     data class EditParagraphStyle(val style: ParagraphStyle?) : Dialog()
     data class EditCharacterStyle(val style: CharacterStyle?) : Dialog()
     data class RenameLayer(val layer: Layer) : Dialog()
-    data class InddInfo(val fileName: String) : Dialog()
+    data class InddInfo(val fileName: String, val uri: Uri) : Dialog()
+    data class InddImported(val fileName: String, val result: InddImporter.Result) : Dialog()
     data object Shortcuts : Dialog()
     data object About : Dialog()
     data class ConfirmDiscard(val then: () -> Unit) : Dialog()
@@ -200,7 +202,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val bytes = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }
                 when (InddDetector.sniff(bytes.copyOf(minOf(16, bytes.size)))) {
-                    InddDetector.Kind.INDD -> { dialog = Dialog.InddInfo(name); return@launch }
+                    InddDetector.Kind.INDD -> { dialog = Dialog.InddInfo(name, uri); return@launch }
                     InddDetector.Kind.UNKNOWN -> { message("$name is not an IDML file"); return@launch }
                     else -> {}
                 }
@@ -216,6 +218,26 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 message(e.message ?: "Could not open file")
             } catch (e: Exception) {
                 message("Could not open $name: ${e.message}")
+            } finally {
+                busy = null
+            }
+        }
+    }
+
+    /** Build a new document from an .indd's embedded metadata and page preview (see [InddImporter]). */
+    fun importIndd(uri: Uri) {
+        val ctx = getApplication<Application>()
+        val name = displayName(uri)
+        dialog = null
+        busy = "Importing $name…"
+        viewModelScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { ctx.contentResolver.openInputStream(uri)!!.use { InddImporter.import(it, name) } }
+                load(r.document.copy(name = r.document.name.removeSuffix(".idml")), null)
+                dirty = true
+                dialog = Dialog.InddImported(name, r)
+            } catch (e: Exception) {
+                message("Could not import $name: ${e.message}")
             } finally {
                 busy = null
             }
@@ -461,18 +483,33 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun zoomBy(factor: Float, sx: Float? = null, sy: Float? = null) {
         val (w, h) = canvasSize
+        autoFit = null
         viewport = viewport.zoomAt(factor, sx ?: w / 2, sy ?: h / 2, actualSizeScale * 0.02f, actualSizeScale * 40f)
     }
 
     fun setZoomPercent(pct: Float) {
         val (w, h) = canvasSize
+        autoFit = null
         viewport = viewport.zoomAt(pct / 100f * actualSizeScale / viewport.scale, w / 2, h / 2, actualSizeScale * 0.02f, actualSizeScale * 40f)
     }
 
-    fun panBy(dx: Float, dy: Float) { viewport = viewport.copy(panX = viewport.panX + dx, panY = viewport.panY + dy) }
+    fun panBy(dx: Float, dy: Float) {
+        autoFit = null
+        viewport = viewport.copy(panX = viewport.panX + dx, panY = viewport.panY + dy)
+    }
+
+    /** A viewport change made directly by the user (drag-pan, pinch, zoom rectangle). */
+    fun moveViewport(v: Viewport) {
+        autoFit = null
+        viewport = v
+    }
+
+    /** What to refit when the canvas is resized (first layout, fold/unfold, DeX window resize); null once the user zooms or pans. */
+    private var autoFit: (() -> Unit)? = null
 
     fun fitPage(index: Int) {
         val (w, h) = canvasSize
+        autoFit = { fitPage(index) }
         if (w <= 0f) { pendingFit = index; return }
         var i = 0
         for (p in placements) for (pg in p.spread.pages) {
@@ -492,6 +529,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         canvasSize = w to h
         val pf = pendingFit
         if (pf != null && w > 0) { pendingFit = null; fitPage(pf); return }
+        if (w > 0 && h > 0 && (old.first != w || old.second != h)) autoFit?.let { it(); return }
         // Keep the centre stable across fold/unfold and window resizes.
         if (old.first > 0 && (old.first != w || old.second != h)) {
             viewport = viewport.copy(panX = viewport.panX + (w - old.first) / 2, panY = viewport.panY + (h - old.second) / 2)
@@ -501,6 +539,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun fitSpread() {
         val (w, h) = canvasSize
         val s = currentSpread() ?: return
+        autoFit = { fitSpread() }
         placementOf(s.id)?.let { viewport = Viewport.fit(it.pageBounds, w, h, 24f * density) }
     }
 

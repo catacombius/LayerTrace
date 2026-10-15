@@ -138,4 +138,27 @@ class LogicTest {
         val caret = layout.caret(10)
         assertNotNull(caret)
     }
+
+    @Test
+    fun shortcutLabelsUseKeyNames() {
+        assertEquals("Ctrl+V", Act.Paste.shortcut!!.display)
+        assertEquals("Ctrl+Alt+Shift+V", Act.PasteInPlace.shortcut!!.display)
+        assertEquals("Ctrl+A", Act.SelectAll.shortcut!!.display)
+        for (a in Act.entries) a.shortcut?.let { assertFalse(a.name, it.display.contains("code", ignoreCase = true)) }
+    }
+
+    @Test
+    fun refitsWhenCanvasResizesUntilUserZooms() {
+        val vm = EditorViewModel(RuntimeEnvironment.getApplication())
+        vm.onCanvasSize(300f, 400f) // e.g. the Fold cover screen
+        vm.newDocument(DocumentFactory.Params())
+        vm.fitPage(0)
+        val small = vm.viewport.scale
+        vm.onCanvasSize(1800f, 1900f) // unfolded
+        assertTrue("refit after resize", vm.viewport.scale > small * 3)
+        vm.zoomBy(1.5f)
+        val zoomed = vm.viewport.scale
+        vm.onCanvasSize(1700f, 1900f)
+        assertEquals("user zoom is kept", zoomed, vm.viewport.scale, 1e-4f)
+    }
 }

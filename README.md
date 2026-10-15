@@ -7,11 +7,18 @@ LayerTrace is a page-layout editor for Android, in the spirit of InDesign and Af
 | Format | Support |
 |---|---|
 | **IDML** (`.idml`, InDesign Markup) | Open, edit and save. This is LayerTrace's native format. |
-| **`.indd`** (native InDesign) | Detected, with conversion instructions. Not editable. |
+| **`.indd`** (native InDesign) | Import preview: page count and size, swatches, font and link lists, and the page 1 preview on a reference layer. Frames and text can't be read. |
 | **PDF** | Export (vector, RGB, embedded fonts, optional bleed). |
 | **PNG** | Export the current page at 150 ppi. |
 
-`.indd` is Adobe's closed, undocumented binary database format. No published spec or library exists, and no app other than InDesign edits it reliably. To bring an `.indd` in, convert it to IDML in InDesign: **File › Save As › InDesign Markup (IDML)**. Files saved by LayerTrace are IDML, and both InDesign and Affinity Publisher open IDML.
+`.indd` is Adobe's closed, undocumented binary database format. No published spec or open-source reader exists. Affinity Publisher and [DesignCraft](https://github.com/storytold/designcraft) also import IDML only. For a full conversion, open the file in InDesign and choose **File › Save As › InDesign Markup (IDML)**. Files saved by LayerTrace are IDML, and both InDesign and Affinity Publisher open IDML.
+
+**Import preview.** InDesign embeds an XMP metadata packet in every `.indd`. When you open an `.indd`, LayerTrace can build a new document from it with:
+- the same page count and page size;
+- the document's named swatches;
+- InDesign's preview image of page 1, if the file has one, on a locked, non-printing layer called "INDD preview (reference)", so you can rebuild the layout over it.
+
+It also lists the fonts and linked files the document uses. The result is an ordinary unsaved IDML document.
 
 When you save, content that LayerTrace doesn't edit yet is carried through unchanged where possible. That includes tables, anchored objects, special characters, buttons, object styles, text wrap, XML tags, metadata and unknown attributes. Stories you haven't edited are written back byte-for-byte.
 
@@ -123,3 +130,5 @@ You need JDK 17+ and the Android SDK (platform 36).
 - **M2: Touch workspace.** Gesture-first UI, radial tool menus, S Pen pressure and hover, palm rejection, on-canvas transform fields.
 - **M3: IDML fidelity.** Text wrap, tables, effects (shadows, feathers), master overrides, footnotes, object styles, anchored objects, bullets and numbering, hyphenation settings, OpenType features.
 - **M4: Print.** CMYK/PDF-X export, preflight, package with links and fonts, colour management.
+
+[DesignCraft](https://github.com/storytold/designcraft) (Rust, MIT/Apache-2.0) is a clean-room InDesign-style editor. It is the reference for M3 and M4: its Knuth–Plass paragraph composer, hyphenation and PDF/X-4 export.
