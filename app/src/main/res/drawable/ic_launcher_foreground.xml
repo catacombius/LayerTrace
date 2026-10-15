@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Two offset pages with a traced frame -->
+    <path android:fillColor="#FF5B8CFF" android:pathData="M34,30h32v42h-32z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M42,38h32v42h-32z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFF4F7B" android:strokeWidth="2.5"
+        android:pathData="M47,45h22v12h-22z" />
+    <path android:fillColor="#FF1E1F22" android:pathData="M47,62h22v2.5h-22zM47,67h18v2.5h-18zM47,72h20v2.5h-20z" />
+</vector>
